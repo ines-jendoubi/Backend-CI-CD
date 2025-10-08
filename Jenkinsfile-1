@@ -1,17 +1,65 @@
 pipeline {
-    agent { label 'linux' }
+agent any
 
-    options {
-        buildDiscarder(logRotator(numToKeepStr: '5'))
-    }
+tools {
+maven 'Maven3'
+jdk 'JDK17'
+}
 
-    stages {
-        stage('Scan') {
-            steps {
-                withSonarQubeEnv(installationName: 'sq1') {
-                    sh './mvnw clean org.sonarsource.scanner.maven:sonar-maven-plugin:3.9.0.2155:sonar'
-                }
-            }
-        }
+environment {
+SONAR_TOKEN = credentials('jenkins-sonar')
+SONAR_HOST = '[http://192.168.33.10:9000](http://192.168.33.10:9000)'
+}
+
+stages {
+stage('Checkout') {
+steps {
+git branch: 'main', url: '[https://github.com/ton-utilisateur/ton-repo.git](https://github.com/ton-utilisateur/ton-repo.git)'
+}
+}
+
+```
+stage('Clean') {
+  steps {
+    sh 'mvn -B clean'
+  }
+}
+
+stage('Compile') {
+  steps {
+    sh 'mvn -B -DskipTests=true compile'
+  }
+}
+
+stage('Analyse SonarQube') {
+  steps {
+    withSonarQubeEnv('sq1') {
+      sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
     }
+  }
+}
+
+stage('Package') {
+  steps {
+    sh 'mvn -B -DskipTests=true package'
+  }
+}
+
+stage('Archive') {
+  steps {
+    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+  }
+}
+```
+
+}
+
+post {
+success {
+echo "✅ Build terminé avec succès !"
+}
+failure {
+echo "❌ Build échoué. Vérifie les logs Jenkins."
+}
+}
 }
