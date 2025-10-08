@@ -1,65 +1,62 @@
 pipeline {
-agent any
+  agent any
 
-tools {
-maven 'Maven3'
-jdk 'JDK17'
-}
-
-environment {
-SONAR_TOKEN = credentials('jenkins-sonar')
-SONAR_HOST = '[http://192.168.33.10:9000](http://192.168.33.10:9000)'
-}
-
-stages {
-stage('Checkout') {
-steps {
-git branch: 'main', url: '[https://github.com/ton-utilisateur/ton-repo.git](https://github.com/ton-utilisateur/ton-repo.git)'
-}
-}
-
-```
-stage('Clean') {
-  steps {
-    sh 'mvn -B clean'
+  tools {
+    maven 'Maven3'
+    jdk 'JDK17'
   }
-}
 
-stage('Compile') {
-  steps {
-    sh 'mvn -B -DskipTests=true compile'
+  environment {
+    SONAR_TOKEN = credentials('jenkins-sonar')
+    SONAR_HOST = 'http://192.168.33.10:9000'
   }
-}
 
-stage('Analyse SonarQube') {
-  steps {
-    withSonarQubeEnv('sq1') {
-      sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: 'main', url: 'https://github.com/ines-jendoubi/Backend-CI-CD.git'
+      }
+    }
+
+    stage('Clean') {
+      steps {
+        sh 'mvn -B clean'
+      }
+    }
+
+    stage('Compile') {
+      steps {
+        sh 'mvn -B -DskipTests=true compile'
+      }
+    }
+
+    stage('Analyse SonarQube') {
+      steps {
+        withSonarQubeEnv('sq1') {
+          sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
+        }
+      }
+    }
+
+    stage('Package') {
+      steps {
+        sh 'mvn -B -DskipTests=true package'
+      }
+    }
+
+    stage('Archive') {
+      steps {
+        archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+      }
     }
   }
-}
 
-stage('Package') {
-  steps {
-    sh 'mvn -B -DskipTests=true package'
+  post {
+    success {
+      echo "✅ Build terminé avec succès !"
+    }
+    failure {
+      echo "❌ Build échoué. Vérifie les logs Jenkins."
+    }
   }
-}
-
-stage('Archive') {
-  steps {
-    archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
-  }
-}
-```
-
-}
-
-post {
-success {
-echo "✅ Build terminé avec succès !"
-}
-failure {
-echo "❌ Build échoué. Vérifie les logs Jenkins."
-}
-}
 }
