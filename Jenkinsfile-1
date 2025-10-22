@@ -9,8 +9,6 @@ pipeline {
   environment {
     SONAR_TOKEN = credentials('jenkins-sonar')
     SONAR_HOST = 'http://192.168.33.10:9000'
-    DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
-    KUBECONFIG = credentials('kubeconfig')
   }
 
   stages {
@@ -34,13 +32,8 @@ pipeline {
 
     stage('Analyse SonarQube') {
       steps {
-        script {
-          // Try SonarQube but don't fail the build if it's down
-          catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-            withSonarQubeEnv('sq1') {
-              sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
-            }
-          }
+        withSonarQubeEnv('sq1') {
+          sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
         }
       }
     }
@@ -56,52 +49,14 @@ pipeline {
         archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
       }
     }
-
-    // ========== CD STAGES ==========
-    stage('Build Docker Image') {
-      steps {
-        script {
-          sh 'docker build -t inessjend/tpproject-app:latest .'
-        }
-      }
-    }
-    
-    stage('Push to Docker Hub') {
-      steps {
-        script {
-          sh "docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}"
-          sh 'docker push inessjend/tpproject-app:latest'
-        }
-      }
-    }
-    
-    stage('Deploy to Kubernetes') {
-      steps {
-        script {
-          sh 'kubectl apply -f k8s/mysql-secret.yaml'
-          sh 'kubectl apply -f k8s/mysql-deployment.yaml'
-          sh 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=300s'
-          sh 'kubectl apply -f k8s/app-deployment.yaml'
-          sh 'kubectl apply -f k8s/app-service.yaml'
-          sh 'kubectl wait --for=condition=ready pod -l app=tpproject-app --timeout=300s'
-          sh 'minikube service tpproject-app --url'
-        }
-      }
-    }
   }
 
   post {
     success {
       echo "✅ Build terminé avec succès !"
-      echo "🚀 Application déployée sur Kubernetes!"
-      sh 'kubectl get all'
     }
     failure {
       echo "❌ Build échoué. Vérifie les logs Jenkins."
-    }
-    always {
-      // Cleanup Docker login
-      sh 'docker logout'
     }
   }
 }
