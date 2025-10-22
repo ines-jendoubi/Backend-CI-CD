@@ -34,8 +34,13 @@ pipeline {
 
     stage('Analyse SonarQube') {
       steps {
-        withSonarQubeEnv('sq1') {
-          sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
+        script {
+          // Try SonarQube but don't fail the build if it's down
+          catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+            withSonarQubeEnv('sq1') {
+              sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
+            }
+          }
         }
       }
     }
@@ -52,7 +57,7 @@ pipeline {
       }
     }
 
-    // ========== NEW CD STAGES ==========
+    // ========== CD STAGES ==========
     stage('Build Docker Image') {
       steps {
         script {
