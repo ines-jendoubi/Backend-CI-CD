@@ -7,8 +7,8 @@ pipeline {
   }
 
   environment {
-    SONAR_TOKEN = credentials('jenkins-sonar')
-    SONAR_HOST = 'http://192.168.33.10:9000'
+    DOCKERHUB_CREDENTIALS = credentials('docker-hub-credentials')
+    KUBECONFIG = credentials('kubeconfig')
   }
 
   stages {
@@ -18,45 +18,59 @@ pipeline {
       }
     }
 
-    stage('Clean') {
+    // REMOVED the separate Clean stage - package will handle cleaning if needed
+
+    stage('Build and Package') {
       steps {
-        sh 'mvn -B clean'
+        // This does clean + compile + package in one step
+        sh 'mvn -B clean package -DskipTests'
       }
     }
 
-    stage('Compile') {
+    // ========== CD STAGES ==========
+    stage('Build Docker Image') {
       steps {
-        sh 'mvn -B -DskipTests=true compile'
-      }
-    }
-
-    stage('Analyse SonarQube') {
-      steps {
-        withSonarQubeEnv('sq1') {
-          sh "mvn -B sonar:sonar -Dsonar.host.url=${SONAR_HOST} -Dsonar.login=${SONAR_TOKEN}"
+        script {
+          sh 'docker build -t inessjend/tpproject-app:latest .'
         }
       }
     }
-
-    stage('Package') {
+    
+    stage('Push to Docker Hub') {
       steps {
-        sh 'mvn -B -DskipTests=true package'
+        script {
+          sh "docker login -u ${DOCKERHUB_CREDENTIALS_USR} -p ${DOCKERHUB_CREDENTIALS_PSW}"
+          sh 'docker push inessjend/tpproject-app:latest'
+        }
       }
     }
-
-    stage('Archive') {
+    
+    stage('Deploy to Kubernetes') {
       steps {
-        archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+        script {
+          sh 'kubectl apply -f k8s/mysql-secret.yaml'
+          sh 'kubectl apply -f k8s/mysql-deployment.yaml'
+          sh 'kubectl wait --for=condition=ready pod -l app=mysql --timeout=300s'
+          sh 'kubectl apply -f k8s/app-deployment.yaml'
+          sh 'kubectl apply -f k8s/app-service.yaml'
+          sh 'kubectl wait --for=condition=ready pod -l app=tpproject-app --timeout=300s'
+          sh 'minikube service tpproject-app --url'
+        }
       }
     }
   }
 
   post {
     success {
-      echo "✅ Build terminé avec succès !"
+      echo "✅ CI/CD Pipeline terminé avec succès !"
+      echo "🚀 Application déployée sur Kubernetes!"
+      sh 'kubectl get all'
     }
     failure {
-      echo "❌ Build échoué. Vérifie les logs Jenkins."
+      echo "❌ Pipeline échoué. Vérifie les logs Jenkins."
+    }
+    always {
+      sh 'docker logout'
     }
   }
 }
